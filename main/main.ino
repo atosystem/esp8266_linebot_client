@@ -5,12 +5,21 @@
 #include <IRremoteESP8266.h>
 #include <IRsend.h>
 
+#include <ArduinoJson.h>
+
+// for json msg parsing
+StaticJsonDocument<477> doc;
+DeserializationError error;
+
 const uint16_t kIrLed = 4;  // ESP8266 GPIO pin to use. Recommended: 4 (D2).
 
 IRsend irsend(kIrLed);  // Set the GPIO to be used to sending the message.
 
-uint8_t on_state[27] = {0x02, 0x20, 0xE0, 0x04, 0x00, 0x00, 0x00, 0x06, 0x02, 0x20, 0xE0, 0x04, 0x00, 0x31, 0x32, 0x80, 0xAF, 0x0D, 0x00, 0x06, 0x60, 0x40, 0x00, 0x81, 0x00, 0x04, 0xD0};
-uint8_t off_state[27] = {0x02, 0x20, 0xE0, 0x04, 0x00, 0x00, 0x00, 0x06, 0x02, 0x20, 0xE0, 0x04, 0x00, 0x30, 0x32, 0x80, 0xAF, 0x0D, 0x00, 0x06, 0x60, 0x40, 0x00, 0x81, 0x00, 0x04, 0xCF};
+// uint8_t on_state[27] = {0x02, 0x20, 0xE0, 0x04, 0x00, 0x00, 0x00, 0x06, 0x02, 0x20, 0xE0, 0x04, 0x00, 0x31, 0x32, 0x80, 0xAF, 0x0D, 0x00, 0x06, 0x60, 0x40, 0x00, 0x81, 0x00, 0x04, 0xD0};
+// uint8_t off_state[27] = {0x02, 0x20, 0xE0, 0x04, 0x00, 0x00, 0x00, 0x06, 0x02, 0x20, 0xE0, 0x04, 0x00, 0x30, 0x32, 0x80, 0xAF, 0x0D, 0x00, 0x06, 0x60, 0x40, 0x00, 0x81, 0x00, 0x04, 0xCF};
+
+uint8_t convert_state[27] = {0x02, 0x20, 0xE0, 0x04, 0x00, 0x00, 0x00, 0x06, 0x02, 0x20, 0xE0, 0x04, 0x00, 0x30, 0x32, 0x80, 0xAF, 0x0D, 0x00, 0x06, 0x60, 0x40, 0x00, 0x81, 0x00, 0x04, 0xCF};
+
 
 const char* ssid = "MakerSpace_2.4G";
 const char* pass = "ntueesaad";
@@ -40,7 +49,7 @@ void line() {
     }
 }
 
-String checkState()
+bool checkState()
 {
   http.begin("testing10293.herokuapp.com", 80, "/check");
     int httpCode = http.GET();
@@ -50,13 +59,31 @@ String checkState()
         
         if(httpCode == 200) {
           String payload = http.getString();
+          // String payload = "{\"status\":0,\"state\":[2,32,224,4,0,0,0,6,2,32,224,4,0,49,52,128,175,13,0,6,96,64,0,129,0,4,210]}";
           // 顯示遠端伺服器的回應
           Serial.println(payload);
-          return payload;
+          const char *cstr = payload.c_str();
+          // Serial.println(cstr);
+          error = deserializeJson(doc, cstr);
+          int dd = doc["status"];
+          print(dd)
+          if(dd == 1)
+          {
+            for (int i =0;i<27;++i)
+            {
+              uint8_t s = doc["state"][i];
+              convert_state[i] = s;
+              Serial.println(s);
+            }
+            return 1;
+          }
+          else{
+            return 0;
+          }
         }
     } else {
         Serial.println("HTTP connection ERROR!");
-        return "-1";
+        return -1;
     }
     
 }
@@ -86,16 +113,21 @@ void setup() {
 
 void loop() {
   Serial.print("Checking");
-  String recv_state = checkState();
-  if(recv_state=="on"){
-    Serial.println("[turn on] a Panasonic A/C state from IRrecvDumpV2");
-    irsend.sendPanasonicAC(on_state);
-    delay(2000);
-  }else if(recv_state=="off"){
-    Serial.println("[turn off] a Panasonic A/C state from IRrecvDumpV2");
-    irsend.sendPanasonicAC(off_state);
+  bool recv_state = checkState();
+  if(recv_state){
+    Serial.println("Get Signal");
+    irsend.sendPanasonicAC(convert_state);
     delay(2000);
   }
+  // if(recv_state=="on"){
+  //   Serial.println("[turn on] a Panasonic A/C state from IRrecvDumpV2");
+  //   irsend.sendPanasonicAC(on_state);
+  //   delay(2000);
+  // }else if(recv_state=="off"){
+  //   Serial.println("[turn off] a Panasonic A/C state from IRrecvDumpV2");
+  //   irsend.sendPanasonicAC(off_state);
+  //   delay(2000);
+  // }
   Serial.print("end");
   delay(2000);
     // unsigned long currentMillis = millis();
